@@ -1,0 +1,126 @@
+name: Deploy Portfolio API
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    branches:
+      - main
+      - dev
+  workflow_dispatch: # Manual trigger
+
+jobs:
+  detect_changes:
+    name: Detect Changed Files
+    runs-on: ubuntu-latest
+    outputs:
+      portfolio_backend: ${{ steps.filter.outputs.portfolio_backend }}
+      newsletter_backend: ${{ steps.filter.outputs.newsletter_backend }}
+      shared_backend: ${{ steps.filter.outputs.shared_backend }}
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Check for file changes
+        uses: dorny/paths-filter@v2
+        id: filter
+        with:
+          filters: |
+            portfolio_backend:
+              - 'backend/portfolio-api/**'
+            newsletter_backend:
+              - 'backend/newsletter-api/**'
+            shared_backend:
+              - 'backend/common/**'
+
+  backend_tests:
+    name: Backend Tests
+    needs: detect_changes
+    if: ${{ needs.detect_changes.outputs.portfolio_backend == 'true' || needs.detect_changes.outputs.newsletter_backend == 'true' || needs.detect_changes.outputs.shared_backend == 'true' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v3
+        with:
+          java-version: "21"
+          distribution: "temurin"
+          cache: "gradle"
+
+      - name: Build and test portfolio API
+        if: ${{ needs.detect_changes.outputs.portfolio_backend == 'true' || needs.detect_changes.outputs.shared_backend == 'true' }}
+        run: |
+          cd backend/portfolio-api
+          ./gradlew test
+
+      - name: Build and test newsletter API
+        if: ${{ needs.detect_changes.outputs.newsletter_backend == 'true' || needs.detect_changes.outputs.shared_backend == 'true' }}
+        run: |
+          cd backend/newsletter-api
+          ./gradlew test
+
+#  deploy_backend:
+#    name: Deploy Backend to Elastic Beanstalk
+#    needs: [detect_changes, backend_tests]
+#    if: ${{ github.ref == 'refs/heads/main' && (needs.detect_changes.outputs.portfolio_backend == 'true' || needs.detect_changes.outputs.newsletter_backend == 'true' || needs.detect_changes.outputs.shared_backend == 'true') }}
+#    runs-on: ubuntu-latest
+#
+#    steps:
+#      - uses: actions/checkout@v3
+#
+#      - name: Set up JDK 21
+#        uses: actions/setup-java@v3
+#        with:
+#          java-version: "21"
+#          distribution: "temurin"
+#          cache: "gradle"
+#
+#      - name: Build portfolio API
+#        if: ${{ needs.detect_changes.outputs.portfolio_backend == 'true' || needs.detect_changes.outputs.shared_backend == 'true' }}
+#        run: |
+#          cd backend/portfolio-api
+#          ./gradlew build -x test
+#          mkdir -p ../deploy
+#          cp build/libs/*.jar ../deploy/portfolio-api.jar
+#
+#      - name: Build newsletter API
+#        if: ${{ needs.detect_changes.outputs.newsletter_backend == 'true' || needs.detect_changes.outputs.shared_backend == 'true' }}
+#        run: |
+#          cd backend/newsletter-api
+#          ./gradlew build -x test
+#          mkdir -p ../deploy
+#          cp build/libs/*.jar ../deploy/newsletter-api.jar
+#
+#      - name: Configure AWS credentials
+#        uses: aws-actions/configure-aws-credentials@v1
+#        with:
+#          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+#          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#          aws-region: us-east-1
+#
+#      - name: Deploy to Elastic Beanstalk
+#        if: ${{ needs.detect_changes.outputs.portfolio_backend == 'true' || needs.detect_changes.outputs.newsletter_backend == 'true' || needs.detect_changes.outputs.shared_backend == 'true' }}
+#        run: |
+#          # Create application version zip
+#          cd backend
+#          zip -r deploy.zip deploy/ Procfile
+#
+#          # Create new application version
+#          aws elasticbeanstalk create-application-version \
+#            --application-name testsite-backend \
+#            --version-label "ver-${{ github.sha }}" \
+#            --source-bundle S3Bucket="${{ secrets.EB_BUCKET }}",S3Key="deploy.zip"
+#
+#          # Upload to S3
+#          aws s3 cp deploy.zip s3://${{ secrets.EB_BUCKET }}/deploy.zip
+#
+#          # Update environment
+#          aws elasticbeanstalk update-environment \
+#            --environment-name testsite-backend-env \
+#            --version-label "ver-${{ github.sha }}"

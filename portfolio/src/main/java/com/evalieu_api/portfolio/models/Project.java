@@ -1,8 +1,11 @@
 package com.evalieu_api.portfolio.models;
 
 import jakarta.persistence.*;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name="projects")
@@ -21,6 +24,10 @@ public class Project {
 
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    @OneToMany(mappedBy = "project", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonManagedReference
+    private List<Achievement> achievements = new ArrayList<>();
 
     // Constructors:
     public Project() {}
@@ -67,6 +74,26 @@ public class Project {
 
     public LocalDateTime getUpdatedAt() {
         return updatedAt;
+    }
+
+    public List<Achievement> getAchievements() {
+        return achievements;
+    }
+
+    public void setAchievements(List<Achievement> achievements) {
+        this.achievements = achievements;
+    }
+    
+    // Helper method to add an achievement
+    public void addAchievement(Achievement achievement) {
+        achievements.add(achievement);
+        achievement.setProject(this);
+    }
+    
+    // Helper method to remove an achievement
+    public void removeAchievement(Achievement achievement) {
+        achievements.remove(achievement);
+        achievement.setProject(null);
     }
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
